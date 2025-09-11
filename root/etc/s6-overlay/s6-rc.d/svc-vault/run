@@ -1,0 +1,50 @@
+#!/usr/bin/with-contenv bash
+set -e
+
+usercmd () { if [ "X${EUID}" != "X0" ] || [ -n "${VAULT_AS_ROOT}" ]; then ${1} "${@:2}"; else s6-setuidgid ${PUID:-1000}:${PGID:-1000} ${1} "${@:2}"; fi; }
+
+VAULT_HOME="${VAULT_HOME:-/vault}";
+VAULT_CONFIG_DIR="${VAULT_CONFIG_DIR:-${VAULT_HOME}/config}";
+VAULT_ROLE="${VAULT_ROLE:-server}"; # or 'agent' or 'proxy'
+# VAULT_ARGS="${VAULT_ARGS:- -dev -dev-root-token-id=root}"; # add as needed
+
+cd ${VAULT_CONFIG_DIR} || exit 1;
+
+# Prevent core dumps
+ulimit -c 0;
+
+if [ "${VAULT_ROLE^^}" == "SERVER" ];
+then
+    HOME="${VAULT_HOME}" \
+    usercmd \
+    exec \
+        /usr/local/bin/vault \
+        server \
+        $(if [[ "${VAULT_ARGS}" == *"-config"* ]] \
+          || [[ "${VAULT_ARGS}" == *"-dev"* ]] \
+          || [[ $(find /run/s6/container_environment/VAULT_DEV_* -maxdepth 1 >/dev/null 2>&1) -gt 0 ]]; \
+          then echo -n ""; \
+          else echo -n -config="${VAULT_CONFIG_DIR}"; \
+        fi) \
+        ${VAULT_ARGS} \
+        ;
+    # unless custom -config or -dev args given
+    #   or dev environment variables specified
+    # will read config-dir
+    # so we don't creates duplicate listeners on *:8200
+elif [ "${VAULT_ROLE^^}" == "AGENT" ] || [ "${VAULT_ROLE^^}" == "PROXY" ];
+then
+    HOME="${VAULT_HOME}" \
+    usercmd \
+    exec \
+        /usr/local/bin/vault \
+        "${VAULT_ROLE,,}" \
+        $(if [[ "${VAULT_ARGS}" == *"-config"* ]];
+          then echo -n ""; \
+          else echo -n -config="${VAULT_CONFIG_DIR}/${VAULT_ROLE,,}.${VAULT_CONFLANG:-hcl}"; \
+        fi) \
+        ${VAULT_ARGS} \
+        ;
+    # unless custom config specified
+    # will only read agent.hcl/json or proxy.hcl/json determined by specified ROLE
+fi;
