@@ -31,7 +31,6 @@ TESTCMD   := \
 
 SKIP_armhf   := 1
 SKIP_armv7l  := 1
-SKIP_i386    := 1
 SKIP_loong64 := 1
 SKIP_ppc64le := 1
 SKIP_riscv64 := 1
